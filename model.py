@@ -13,10 +13,9 @@ class SepInc(nn.Module):
             num_outputs_2_0a,
             num_outputs_2_0b,
             num_outputs_3_0b,
-            gating_fn=None
+            use_gating=None
             ):
-        self.gating_fn = gating_fn
-        self.use_gating = gating_fn is not None
+        self.use_gating = use_gating
         super(SepInc, self).__init__()
         self.branch_0 = nn.Conv3d(input_dim, num_outputs_0_0a, [1, 1, 1])
         self.branch_1_a = nn.Conv3d(input_dim, num_outputs_1_0a, [1, 1, 1])
@@ -28,10 +27,10 @@ class SepInc(nn.Module):
         self.output_dim = num_outputs_0_0a + num_outputs_1_0b + num_outputs_2_0b + num_outputs_3_0b
 
         if self.use_gating:
-            self.branch_0_g = self.gating_fn(self.branch_0)
-            self.branch_1_g = self.gating_fn(self.branch_1_b)
-            self.branch_2_g = self.gating_fn(self.branch_2_b)
-            self.branch_3_g = self.gating_fn(self.branch_3_b)
+            self.branch_0_g = Gating(num_outputs_0_0a)
+            self.branch_1_g = Gating(num_outputs_1_0b)
+            self.branch_2_g = Gating(num_outputs_2_0b)
+            self.branch_3_g = Gating(num_outputs_3_0b)
 
     def forward(self, input):
         b0 = self.branch_0(input)
@@ -83,7 +82,7 @@ class SepConv(nn.Module):
 
     def forward(self, input):
         out = self.relu(self.conv1(input))
-        out = self.relu(self.conv2(input))
+        out = self.relu(self.conv2(out))
         return out
     
 class MaxPool3dTFPadding(nn.Module):
@@ -117,6 +116,17 @@ class MaxPool3dTFPadding(nn.Module):
         out = self.pool(out)
         return out
 
+class Gating(nn.Module):
+    def __init__(self, input_dim):
+        super(Gating, self).__init__()
+        self.fc = nn.Linear(input_dim, input_dim)
+
+    def forward(self, input):
+        st_avg = torch.mean(input, dim=[2, 3, 4])
+        W = self.fc(st_avg)
+        W = torch.sigmoid(W)
+        return W[:, :, None, None, None] * input
+
 class S3D(nn.Module):
     def __init__(self, num_classes=1000, dropout=0.1, gating=False):
         super(S3D, self).__init__()
@@ -127,22 +137,23 @@ class S3D(nn.Module):
         self.maxpool_2a = MaxPool3dTFPadding(kernel_size=(1, 3, 3), stride=(1, 2, 2))
         # B x 32 x 112 x 112 x 64
         self.conv2d_2b = nn.Conv3d(64, 64, [1, 1, 1], stride=1)
+        # Batch norm ?
         # B x 32 x 112 x 112 x 64
         self.conv2d_2c = SepConv(64, 192, [3, 3, 3], stride=1, padding=1)
         # B x 32 x 112 x 112 x 192
         self.maxpool_3a = MaxPool3dTFPadding(kernel_size=(1, 3, 3), stride=(1, 2, 2))
-        self.mixed_3b = SepInc(192, 64, 96, 128, 16, 32, 32)
-        self.mixed_3c = SepInc(self.mixed_3b.output_dim, 128, 128, 192, 32, 96, 64)
+        self.mixed_3b = SepInc(192, 64, 96, 128, 16, 32, 32, use_gating=gating)
+        self.mixed_3c = SepInc(self.mixed_3b.output_dim, 128, 128, 192, 32, 96, 64, use_gating=gating)
         self.maxpool_4a = MaxPool3dTFPadding(kernel_size=(3, 3, 3), stride=(2, 2, 2))
-        self.mixed_4b = SepInc(self.mixed_3c.output_dim, 192, 96, 208, 16, 48, 64)
-        self.mixed_4c = SepInc(self.mixed_4b.output_dim, 160, 112, 224, 24, 64, 64)
-        self.mixed_4d = SepInc(self.mixed_4c.output_dim, 128, 128, 256, 24, 64, 64)
-        self.mixed_4e = SepInc(self.mixed_4d.output_dim, 112, 144, 288, 32, 64, 64)
-        self.mixed_4f = SepInc(self.mixed_4e.output_dim, 256, 160, 320, 32, 128, 128)
+        self.mixed_4b = SepInc(self.mixed_3c.output_dim, 192, 96, 208, 16, 48, 64, use_gating=gating)
+        self.mixed_4c = SepInc(self.mixed_4b.output_dim, 160, 112, 224, 24, 64, 64, use_gating=gating)
+        self.mixed_4d = SepInc(self.mixed_4c.output_dim, 128, 128, 256, 24, 64, 64, use_gating=gating)
+        self.mixed_4e = SepInc(self.mixed_4d.output_dim, 112, 144, 288, 32, 64, 64, use_gating=gating)
+        self.mixed_4f = SepInc(self.mixed_4e.output_dim, 256, 160, 320, 32, 128, 128, use_gating=gating)
         self.maxpool_5a = MaxPool3dTFPadding(kernel_size=(2, 2, 2), stride=(2, 2, 2))
-        self.mixed_5b = SepInc(self.mixed_4f.output_dim, 256, 160, 320, 32, 128, 128)
-        self.mixed_5c = SepInc(self.mixed_5b.output_dim, 384, 192, 384, 48, 128, 128)
-        self.avgpool_0a = nn.AvgPool3d((2, 7, 7), stride=1)
+        self.mixed_5b = SepInc(self.mixed_4f.output_dim, 256, 160, 320, 32, 128, 128, use_gating=gating)
+        self.mixed_5c = SepInc(self.mixed_5b.output_dim, 384, 192, 384, 48, 128, 128, use_gating=gating)
+        # self.avgpool_0a = nn.AvgPool3d((2, 7, 7), stride=1)
         self.dropout_0b = nn.Dropout3d(p=dropout, inplace=True)
         self.conv2d_0b = nn.Conv3d(self.mixed_5c.output_dim, self.num_classes, [1, 1, 1], bias=False)
 
@@ -163,7 +174,8 @@ class S3D(nn.Module):
         net = self.maxpool_5a(net)
         net = self.mixed_5b(net)
         net = self.mixed_5c(net)
-        net = self.avgpool_0a(net)
+        # net = self.avgpool_0a(net)
         net = self.dropout_0b(net)
         net = self.conv2d_0b(net)
         net = torch.mean(net, dim=(2, 3, 4))
+        return net
