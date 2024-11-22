@@ -111,6 +111,8 @@ class SmthSmthV2Dataset(Dataset):
         except (RuntimeError, ZeroDivisionError) as e:
             print('{}: WEBM reader cannot open {}. Empty '
                   'list returned.'.format(type(e).__name__, item.path))
+
+        # video = Video(path, ...)
             
         num_frames = len(imgs)
         label = item.label
@@ -170,11 +172,15 @@ if __name__ == "__main__":
         step_size=1,
         is_val=True
     )
+    # Do we train batch by batch w/ diff. sets or interleave the sets directly? Open question
     train_subset = torch.utils.data.Subset(trainset, list(range(0, len(trainset), 500)))
     val_subset = torch.utils.data.Subset(valset, list(range(0, len(valset), 500)))
     trainloader = DataLoader(train_subset, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
     validloader = DataLoader(val_subset, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
     model = S3D(num_classes=174)
-    optim = torch.optim.Adam(model.parameters(), lr=args.lr)
+    # kaiming init
+    optim = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=10e-3)
     criterion = torch.nn.CrossEntropyLoss()
+    # Add LR scheduler
+    # Maybe add warmup?
     train(model, trainloader, validloader, optim, criterion, args.epochs, args.lr, device)
