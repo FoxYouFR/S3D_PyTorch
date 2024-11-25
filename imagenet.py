@@ -4,29 +4,26 @@ import argparse
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torchvision.datasets import ImageNet
 import torch.nn as nn
-from brainscore_vision.model_helpers.activations.temporal.inputs.video import Video
+from brainscore_vision.model_helpers.activations.temporal.inputs.video import VideoFromImage
 
 from model import S3D
 from training import train
 
-class ImageNet(Dataset):
-    def __init__(self, root, annotation_path, train=True):
-        super(ImageNet, self).__init__(root)
-        
-
-    def __len__(self):
-        return len(self.video_clips)
+class ImageNetVid(ImageNet):
+    def __init__(self, root, duration, fps, split='train'):
+        super(ImageNetVid, self).__init__(root, split)
+        self.duration = duration
+        self.fps = fps
 
     def __getitem__(self, idx):
-        img_path = None
-        label = None
-        video = Video.from_img_path(img_path)
-        imgs = video.to_frames()
+        img, label = super().__getitem__(idx)
+        data = np.repeat(img[np.newaxis, ...], self.duration*self.fps, axis=0)
         # TODO batch size?
         # Shape is (T, H, W, C)
-        imgs = np.array(imgs)
-        data = torch.from_numpy(imgs)
+        print(data.shape)
+        data = torch.from_numpy(data)
         # Need shape (C, H, W, T)
         data = data.permute(3, 1, 2, 0)
         data = data.float() / 255.0
@@ -46,14 +43,16 @@ if __name__ == "__main__":
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    trainset = ImageNet(
+    trainset = ImageNetVid(
         root='/mnt/scratch/ytang/imagenet',
-        annotation_path='D:\\AFD101\\splits'
+        duration=4000,
+        fps=12
     )
-    valset = ImageNet(
+    valset = ImageNetVid(
         root='/mnt/scratch/ytang/imagenet',
-        annotation_path='D:\\AFD101\\splits',
-        train=False
+        split='val',
+        duration=4000,
+        fps=12
     )
     # Do we train batch by batch w/ diff. sets or interleave the sets directly? Open question
     # train_subset = torch.utils.data.Subset(trainset, list(range(0, len(trainset), 500)))
