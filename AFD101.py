@@ -1,87 +1,39 @@
-import os
 import argparse
-from collections import namedtuple
-import logging
 
 import json
 import time
 import numpy as np
-# Required for scikit-video to work correctly
-np.float = np.float64
-np.int = np.int_
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
-from skvideo.io import FFmpegReader
+from torchvision.datasets.utils import list_dir
+from torchvision.datasets.folder import make_dataset
+from torchvision.datasets.vision import VisionDataset
+from torchvision.datasets import UCF101
 from brainscore_vision.model_helpers.activations.temporal.inputs.video import Video
 
 from model import S3D
 from training import train
 
-ListData = namedtuple('ListData', ['id', 'label', 'path'])
+class AFD101(VisionDataset):
+    def __init__(self, root, annotation_path, fold=1, is_val=False, is_test=False):
+        super(AFD101, self).__init__(root)
 
-class WebmDataset(Dataset):
-    def __init__(self, json_file_input, json_file_labels, root, is_test=False):
-        self.json_file_input = json_file_input
-        self.json_file_labels = json_file_labels
-        self.root = root
-        self.is_test = is_test
+        if not 1 <= fold <= 3:
+            raise ValueError('fold should be between 1 and 3, got {}'.format(fold))
 
-        self.classes = self.read_json_labels()
-        self.classes_dict = self.get_two_way_dict(self.classes)
-        self.json_data = self.read_json_input()
+        extensions = ('avi',)
+        classes = list(sorted(list_dir(root)))
 
-    def read_json_labels(self):
-        classes = []
-        with open(self.json_file_labels, 'rb') as json_file:
-            json_reader = json.load(json_file)
-            for elem in json_reader:
-                classes.append(elem)
-        return sorted(classes)
-    
-    def get_two_way_dict(self, classes):
-        classes_dict = {}
-        for i, item in enumerate(classes):
-            classes_dict[item] = i
-            classes_dict[i] = item
-        return classes_dict
+        self.class_to_idx = {classes[i]: i for i in range(len(classes))}
+        self.idx_to_class = {v: k for k, v in self.class_to_idx.items()}
+        self.samples = make_dataset(self.root, self.class_to_idx, extensions, is_valid_file=None)
+        self.classes = classes
+        video_list = [x[0] for x in self.samples]
 
-    def read_json_input(self):
-        json_data = []
-        if not self.is_test:
-            with open(self.json_file_input, 'rb') as json_file:
-                json_reader = json.load(json_file)
-                for elem in json_reader:
-                    label = self.clean_template(elem['template'])
-                    if label not in self.classes:
-                        raise ValueError(f'Label {label} not found in classes')
-                    item = ListData(elem['id'], label, os.path.join(self.root, elem['id'] + '.webm'))
-                    json_data.append(item)
-
-        else:
-            with open(self.json_file_input, 'rb') as json_file:
-                json_reader = json.load(json_file)
-                for elem in json_reader:
-                    item = ListData(elem['id'], "Dummy label", os.path.join(self.root, elem['id'] + '.webm'))
-                    json_data.append(item)
-
-        return json_data
-    
-    def clean_template(self, template):
-        return template.replace('[', '').replace(']', '')
-    
-    def __getitem__(self, index):
-        raise NotImplementedError
-
-class SmthSmthV2Dataset(Dataset):
-    def __init__(self, root, json_file_input, json_file_labels, clip_size, nclips, step_size, is_val,
-                  is_test=False):
-        self.dataset = WebmDataset(json_file_input, json_file_labels, root, is_test=is_test)
-        self.json_data = self.dataset.json_data
-        self.classes = self.dataset.classes
-        self.classes_dict = self.dataset.classes_dict
-        self.root = root
-        self.is_val = is_val
+        self.indices = self._select_fold(video_list, annotation_path, fold, not (is_val or is_test))
+        self.video_clips = [video_list[i] for i in self.indices]
+        self.num_classes = len(classes)
         
     def __getitem__(self, index):
         item = self.json_data[index]
@@ -118,34 +70,26 @@ if __name__ == "__main__":
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    trainset = SmthSmthV2Dataset(
-        'D:\\smthsmthv2\\videos',
-        'D:\\smthsmthv2\\labels\\train.json',
-        'D:\\smthsmthv2\\labels\\labels.json',
-        clip_size=36,
-        nclips=1,
-        step_size=1,
-        is_val=False
+    trainset = UCF101(
+        root='/mnt/scratch/ytang/datasets/afd101'
     )
-    valset = SmthSmthV2Dataset(
-        'D:\\smthsmthv2\\videos',
-        'D:\\smthsmthv2\\labels\\validation.json',
-        'D:\\smthsmthv2\\labels\\labels.json',
-        clip_size=36,
-        nclips=1,
-        step_size=1,
-        is_val=True
-    )
+    # valset = AFD101(
+    #     'D:\\smthsmthv2\\videos',
+    #     'D:\\smthsmthv2\\labels\\validation.json',
+    #     'D:\\smthsmthv2\\labels\\labels.json',
+    #     is_val=True
+    # )
     # Do we train batch by batch w/ diff. sets or interleave the sets directly? Open question
     train_subset = torch.utils.data.Subset(trainset, list(range(0, len(trainset), 500)))
-    val_subset = torch.utils.data.Subset(valset, list(range(0, len(valset), 500)))
+    # val_subset = torch.utils.data.Subset(valset, list(range(0, len(valset), 500)))
     # TODO Find a way to make batch size higher than 1
     trainloader = DataLoader(train_subset, batch_size=1, shuffle=False, num_workers=1, pin_memory=True)
-    validloader = DataLoader(val_subset, batch_size=1, shuffle=False, num_workers=1, pin_memory=True)
-    model = S3D(num_classes=174)
+    # validloader = DataLoader(val_subset, batch_size=1, shuffle=False, num_workers=1, pin_memory=True)
+    model = S3D(num_classes=101)
     model.apply(init_weights) # Weights initialization
     optim = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
     criterion = torch.nn.CrossEntropyLoss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=100, eta_min=args.minlr)
     # TODO Maybe add warmup?
-    train(model, trainloader, validloader, optim, scheduler, criterion, args.epochs, args.lr, device)
+    # train(model, trainloader, validloader, optim, scheduler, criterion, args.epochs, args.lr, device)
+    train(model, trainloader, None, optim, scheduler, criterion, args.epochs, args.lr, device)

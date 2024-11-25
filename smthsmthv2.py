@@ -1,18 +1,13 @@
 import os
 import argparse
 from collections import namedtuple
-import logging
 
 import json
 import time
 import numpy as np
-# Required for scikit-video to work correctly
-np.float = np.float64
-np.int = np.int_
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
-from skvideo.io import FFmpegReader
 from brainscore_vision.model_helpers.activations.temporal.inputs.video import Video
 
 from model import S3D
