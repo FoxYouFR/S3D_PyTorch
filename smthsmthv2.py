@@ -83,18 +83,14 @@ class SmthSmthV2Dataset(Dataset):
         
     def __getitem__(self, index):
         item = self.json_data[index]
-        print(item)
 
         video = Video.from_path(item.path)
-        print(f'Video loaded: {video._path}, {video._start}-{video._end} (dur. {video.duration})')
-
         imgs = video.to_frames()
-        print(f'Frames loaded: {len(imgs)}')
 
-        # num_frames = video.num_frames
         label = item.label
         target_idx = self.classes_dict[label]
 
+        # num_frames = video.num_frames
         # if self.nclips > -1:
         #     num_frames_necessary = self.clip_size * self.nclips * self.step_size
         # else:
@@ -110,6 +106,7 @@ class SmthSmthV2Dataset(Dataset):
         # if len(imgs) < self.clip_size * self.nclips:
         #     imgs.extend([imgs[-1]] * (self.clip_size * self.nclips - len(imgs)))
 
+        # TODO batch size?
         # Shape is (N, T, H, W, C)
         imgs = np.array(imgs)
         # Shape is (T, H, W, C)
@@ -117,7 +114,7 @@ class SmthSmthV2Dataset(Dataset):
         # Need shape (C, H, W, T)
         data = data.permute(3, 1, 2, 0)
         data = data.float() / 255.0
-        return (data, target_idx)
+        return data, target_idx
     
     def __len__(self):
         return len(self.json_data)
@@ -158,12 +155,18 @@ if __name__ == "__main__":
     train_subset = torch.utils.data.Subset(trainset, list(range(0, len(trainset), 500)))
     val_subset = torch.utils.data.Subset(valset, list(range(0, len(valset), 500)))
     # TODO Find a way to make batch size higher than 1
-    trainloader = DataLoader(train_subset, batch_size=1, shuffle=False, num_workers=1, pin_memory=True)
-    validloader = DataLoader(val_subset, batch_size=1, shuffle=False, num_workers=1, pin_memory=True)
+    trainloader = DataLoader(train_subset, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
+    validloader = DataLoader(val_subset, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
     model = S3D(num_classes=174)
     model.apply(init_weights) # Weights initialization
     optim = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
     criterion = torch.nn.CrossEntropyLoss()
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=100, eta_min=args.minlr)
+    config = {
+        'project': 'S3D-smthsmthv2',
+        'arch': 'S3D',
+        'dataset': 'smthsmthv2',
+        'epochs': args.epochs
+    }
     # TODO Maybe add warmup?
-    train(model, trainloader, validloader, optim, scheduler, criterion, args.epochs, args.lr, device)
+    train(model, trainloader, validloader, optim, scheduler, criterion, config, device)

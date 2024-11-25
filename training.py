@@ -3,14 +3,15 @@ import torch
 from tqdm import tqdm
 import wandb
 
-def train(model, trainloader, validloader, optim, scheduler, criterion, epochs, lr, device='cpu'):
+def train(model, trainloader, validloader, optim, scheduler, criterion, config, device='cpu'):
+    epochs = config['epochs']
     # wandb.init(
-    #     project='S3D-smthsmthv2',
-    #     config = {
-    #         'learning_rate': lr,
-    #         'architecture': 'CNN',
-    #         'dataset': 'smthsmthv2',
-    #         'epochs': epochs
+    #     project=config['project'],
+    #     config={
+    #         'architecture': config['arch'],
+    #         'dataset': config['dataset'],
+    #         'epochs': epochs,
+    #         'device': device
     #     }
     # )
 
@@ -41,7 +42,7 @@ def train(model, trainloader, validloader, optim, scheduler, criterion, epochs, 
 
         if validloader is None:
             print(f'Epoch: {epoch} \tTraining Loss: {train_loss:.6f} \tTraining Acc: {train_acc:.6f}')
-            wandb.log({'train_loss': train_loss, 'train_acc': train_acc})
+            wandb.log({'train_loss': train_loss, 'train_acc': train_acc, 'lr': scheduler.get_last_lr()[0]})
 
         else:
             model.eval()
@@ -61,7 +62,8 @@ def train(model, trainloader, validloader, optim, scheduler, criterion, epochs, 
                   f'\tValidation Loss: {valid_loss:.6f} \tValidation Acc: {valid_acc:.6f}')
             wandb.log({
                 'train_loss': train_loss, 'train_acc': train_acc,
-                'valid_loss': valid_loss, 'valid_acc': valid_acc
+                'valid_loss': valid_loss, 'valid_acc': valid_acc,
+                'lr': scheduler.get_last_lr()[0]
             })
             
             # save model if validation loss has decreased
