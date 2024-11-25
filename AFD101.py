@@ -81,39 +81,16 @@ class SmthSmthV2Dataset(Dataset):
         self.classes = self.dataset.classes
         self.classes_dict = self.dataset.classes_dict
         self.root = root
-        self.clip_size = clip_size
-        self.nclips = nclips
-        self.step_size = step_size
         self.is_val = is_val
         
     def __getitem__(self, index):
         item = self.json_data[index]
-        print(item)
-
+        
         video = Video.from_path(item.path)
-        print(f'Video loaded: {video._path}, {video._start}-{video._end} (dur. {video.duration})')
-
         imgs = video.to_frames()
-        print(f'Frames loaded: {len(imgs)}')
 
-        # num_frames = video.num_frames
         label = item.label
         target_idx = self.classes_dict[label]
-
-        # if self.nclips > -1:
-        #     num_frames_necessary = self.clip_size * self.nclips * self.step_size
-        # else:
-        #     num_frames_necessary = num_frames
-        # offset = 0
-        # if num_frames_necessary < num_frames:
-        #     diff = num_frames - num_frames_necessary
-        #     if not self.is_val:
-        #         offset = np.random.randint(0, diff)
-
-        # imgs = imgs[offset:offset + num_frames_necessary : self.step_size]
-
-        # if len(imgs) < self.clip_size * self.nclips:
-        #     imgs.extend([imgs[-1]] * (self.clip_size * self.nclips - len(imgs)))
 
         # Shape is (N, T, H, W, C)
         imgs = np.array(imgs)

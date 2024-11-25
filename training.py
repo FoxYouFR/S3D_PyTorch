@@ -3,16 +3,16 @@ import torch
 from tqdm import tqdm
 import wandb
 
-def train(model, trainloader, validloader, optim, criterion, epochs, lr, device='cpu'):
-    wandb.init(
-        project='S3D-smthsmthv2',
-        config = {
-            'learning_rate': lr,
-            'architecture': 'CNN',
-            'dataset': 'smthsmthv2',
-            'epochs': epochs
-        }
-    )
+def train(model, trainloader, validloader, optim, scheduler, criterion, epochs, lr, device='cpu'):
+    # wandb.init(
+    #     project='S3D-smthsmthv2',
+    #     config = {
+    #         'learning_rate': lr,
+    #         'architecture': 'CNN',
+    #         'dataset': 'smthsmthv2',
+    #         'epochs': epochs
+    #     }
+    # )
 
     model = model.to(device)
     valid_loss_min = np.Inf
@@ -33,6 +33,7 @@ def train(model, trainloader, validloader, optim, criterion, epochs, lr, device=
             loss = criterion(out, target)
             loss.backward()
             optim.step()
+            scheduler.step()
             train_loss += loss.item() * data.size(0)
 
         train_loss /= len(trainloader.dataset)
