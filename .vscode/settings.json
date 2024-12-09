@@ -1,0 +1,16 @@
+{
+    "editor.fontLigatures": true,
+    "editor.suggestSelection": "first",
+    "editor.suggest.snippetsPreventQuickSuggestions": true,
+    "[markdown]": {
+        "editor.quickSuggestionsDelay": 0,
+        "editor.wordBasedSuggestions": "off",
+        "editor.rulers": [80],
+        "editor.wordWrap": "wordWrapColumn",
+        "editor.wordWrapColumn": 80,
+        "files.trimTrailingWhitespace": true,
+    },
+    "[hsnips]": {
+        "files.trimTrailingWhitespace": false
+    },
+}

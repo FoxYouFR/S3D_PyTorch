@@ -1,37 +1,18 @@
-import os
 import argparse
 
-import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
-from torchvision.datasets import ImageNet
 import torch.nn as nn
-from brainscore_vision.model_helpers.activations.temporal.inputs.video import VideoFromImage
+from torch.utils.data import DataLoader
 
 from model import S3D
 from training import train
+from datasets import ImageNetVid
 
-class ImageNetVid(ImageNet):
-    def __init__(self, root, duration, fps, split='train'):
-        super(ImageNetVid, self).__init__(root, split)
-        self.duration = duration
-        self.fps = fps
-
-    def __getitem__(self, idx):
-        img, label = super().__getitem__(idx)
-        data = np.repeat(img[np.newaxis, ...], self.duration*self.fps, axis=0)
-        # TODO batch size?
-        # Shape is (T, H, W, C)
-        print(data.shape)
-        data = torch.from_numpy(data)
-        # Need shape (C, H, W, T)
-        data = data.permute(3, 1, 2, 0)
-        data = data.float() / 255.0
-        return data, label
-    
 def init_weights(m):
     if isinstance(m, nn.Conv3d) or isinstance(m, nn.Linear):
-        nn.init.kaiming_normal_(m.weight)
+        nn.init.kaiming_normal_(m.weight, nonlinearity='relu')
+        if m.bias is not None:
+            m.bias.data.fill_(0)
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -44,28 +25,21 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     trainset = ImageNetVid(
-        root='/mnt/scratch/ytang/imagenet',
-        duration=4000,
-        fps=12
+        root='/mnt/scratch/akgokce/datasets/imagenet',
+        split='train'
     )
     valset = ImageNetVid(
-        root='/mnt/scratch/ytang/imagenet',
-        split='val',
-        duration=4000,
-        fps=12
+        root='/mnt/scratch/akgokce/datasets/imagenet',
+        split='val'
     )
     # Do we train batch by batch w/ diff. sets or interleave the sets directly? Open question
-    # train_subset = torch.utils.data.Subset(trainset, list(range(0, len(trainset), 500)))
-    # val_subset = torch.utils.data.Subset(valset, list(range(0, len(valset), 500)))
-    # TODO Find a way to make batch size higher than 1
-    trainloader = DataLoader(trainset, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
-    validloader = DataLoader(valset, batch_size=1, shuffle=False, num_workers=8, pin_memory=True)
-    model = S3D(num_classes=101)
+    trainloader = DataLoader(trainset, batch_size=4, shuffle=True, num_workers=32, pin_memory=True, prefetch_factor=4, persistent_workers=True)
+    validloader = DataLoader(valset, batch_size=4, shuffle=False, num_workers=32, pin_memory=True, prefetch_factor=4, persistent_workers=True)
+    model = S3D(num_classes=1000)
     model.apply(init_weights) # Weights initialization
     optim = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-3)
     criterion = torch.nn.CrossEntropyLoss()
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=100, eta_min=args.minlr)
-    # TODO Maybe add warmup?
+    scheduler = torch.optim.lr_scheduler.LinearLR(optim, start_factor=1, end_factor=0.1)
     config = {
         'project': 'S3D-ImageNet',
         'arch': 'S3D',
